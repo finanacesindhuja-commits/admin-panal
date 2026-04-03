@@ -19,6 +19,7 @@ app.set('trust proxy', 1);
 const allowedOrigins = [
   'http://localhost:5173',
   'http://localhost:4173',
+  'https://admin-panal-k6n4.vercel.app',
   process.env.CLIENT_URL,
 ].filter(Boolean);
 
