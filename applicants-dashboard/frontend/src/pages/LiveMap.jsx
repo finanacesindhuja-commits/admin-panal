@@ -208,88 +208,110 @@ export default function LiveMap() {
               </div>
             ) : (
               <>
-                {locations
-                  .filter(loc =>
-                    submittedQuery.trim() === '' ||
-                    (loc.staff?.name || loc.name || '').toLowerCase().includes(submittedQuery.toLowerCase()) ||
-                    (loc.staff_id || '').toLowerCase().includes(submittedQuery.toLowerCase())
-                  )
-                  .map((loc) => {
-                    const isOnline = (new Date() - new Date(loc.timestamp)) <= 8 * 60 * 60 * 1000;
-                    return (
-                    <div key={loc.staff_id} className={`group bg-white rounded-[2.5rem] p-6 border shadow-[0_4px_25px_-4px_rgba(0,0,0,0.03)] hover:shadow-[0_20px_45px_-12px_rgba(0,0,0,0.08)] transition-all duration-500 hover:-translate-y-2 relative overflow-hidden ${isOnline ? 'border-gray-100' : 'border-red-100/50 opacity-90'}`}>
-                      <div className="relative z-10">
-                        <div className="flex items-start justify-between mb-6">
-                          <div className="flex items-center gap-4">
-                            <div className={`w-14 h-14 rounded-2xl flex items-center justify-center text-2xl font-black border shadow-inner group-hover:scale-110 transition-transform duration-500 ${isOnline ? 'bg-gradient-to-br from-indigo-50 to-indigo-100/50 text-indigo-600 border-indigo-200/50' : 'bg-gradient-to-br from-gray-50 to-gray-100/50 text-gray-500 border-gray-200/50 grayscale-[50%]'}`}>
-                              {loc.staff?.name?.charAt(0) || loc.name?.charAt(0) || '?'}
-                            </div>
-                            <div>
-                              <h3 className="font-extrabold text-gray-950 tracking-tight leading-tight group-hover:text-indigo-600 transition-colors uppercase">{loc.staff?.name || loc.name || 'Unknown'}</h3>
-                              <p className="text-[10px] text-gray-400 font-mono mt-1 font-bold uppercase tracking-tight">{loc.staff_id}</p>
-                            </div>
-                          </div>
-                          <div className="flex flex-col items-end">
-                            <div className={`flex items-center gap-1.5 px-2 py-1 rounded-full text-[10px] font-black uppercase tracking-tighter mb-2 border ${isOnline ? 'bg-green-50 text-green-600 border-green-100/50' : 'bg-red-50 text-red-600 border-red-100/50'}`}>
-                              <span className={`w-1.5 h-1.5 rounded-full ${isOnline ? 'bg-green-500 animate-pulse' : 'bg-red-500'}`}></span>
-                              {isOnline ? 'Live' : 'Offline'}
-                            </div>
-                          </div>
-                        </div>
-
-                        <div className="bg-gray-50/50 rounded-3xl p-5 mb-6 border border-gray-100 grid grid-cols-2 gap-4">
-                          <div>
-                            <p className="text-[9px] font-black text-gray-400 uppercase tracking-widest mb-1.5">Latitude</p>
-                            <p className="font-mono text-xs font-bold text-gray-700 bg-white border border-gray-100 rounded-lg p-2 text-center">{loc.latitude?.toFixed(5)}</p>
-                          </div>
-                          <div>
-                            <p className="text-[9px] font-black text-gray-400 uppercase tracking-widest mb-1.5">Longitude</p>
-                            <p className="font-mono text-xs font-bold text-gray-700 bg-white border border-gray-100 rounded-lg p-2 text-center">{loc.longitude?.toFixed(5)}</p>
-                          </div>
-                        </div>
-
-                        <div className="flex items-center justify-between px-2 mb-6">
-                           <div>
-                              <p className="text-[9px] font-black text-gray-400 uppercase tracking-widest leading-none mb-1">Status</p>
-                              <p className={`text-xs font-black uppercase ${isOnline ? 'text-indigo-500' : 'text-red-500'}`}>
-                                 {isOnline ? 'Signals Normal' : 'Signal Lost'}
-                              </p>
-                           </div>
-                           <div className="text-right">
-                              <p className="text-[9px] font-black text-gray-400 uppercase tracking-widest leading-none mb-1">Last Update</p>
-                              <p className="text-[10px] font-bold text-gray-600">{new Date(loc.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</p>
-                           </div>
-                        </div>
-
-                        <a 
-                          href={`https://www.google.com/maps?q=${loc.latitude},${loc.longitude}`}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="w-full py-4 bg-gray-900 group-hover:bg-indigo-600 text-white text-[11px] font-black rounded-2xl flex items-center justify-center gap-2.5 transition-all duration-300 shadow-lg shadow-gray-200 group-hover:shadow-indigo-200 ring-4 ring-transparent hover:ring-indigo-50"
-                        >
-                          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
-                            <circle cx="12" cy="11" r="3" strokeWidth={2.5} />
-                          </svg>
-                          LOCATE LIVE POSITION
-                        </a>
-                      </div>
-                    </div>
-                  );
-                })}
-                {submittedQuery.trim() !== '' && locations.filter(loc =>
-                  (loc.staff?.name || loc.name || '').toLowerCase().includes(submittedQuery.toLowerCase()) ||
-                  (loc.staff_id || '').toLowerCase().includes(submittedQuery.toLowerCase())
-                ).length === 0 && (
+                {submittedQuery.trim() === '' ? (
                   <div className="col-span-full py-24 text-center bg-gray-50/50 rounded-[3rem] border-2 border-dashed border-gray-100 flex flex-col items-center">
                     <div className="w-24 h-24 bg-white rounded-3xl shadow-sm flex items-center justify-center text-gray-300 mb-8 border border-gray-100">
                       <svg className="w-12 h-12" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
                       </svg>
                     </div>
-                    <h3 className="text-2xl font-extrabold text-gray-900 tracking-tight uppercase">No Results Found</h3>
-                    <p className="text-gray-400 font-medium max-w-sm mx-auto mt-4 leading-relaxed">No staff matching "{submittedQuery}" detected on the live radar.</p>
+                    <h3 className="text-2xl font-extrabold text-gray-900 tracking-tight uppercase">Search for Staff</h3>
+                    <p className="text-gray-400 font-medium max-w-sm mx-auto mt-4 leading-relaxed">Enter a Staff Name or ID in the search bar above to locate them on the live radar.</p>
                   </div>
+                ) : (
+                  <>
+                    <div className="col-span-full flex justify-between items-center bg-indigo-50/50 px-6 py-4 rounded-3xl border border-indigo-100">
+                      <h3 className="text-sm font-bold text-indigo-900 tracking-wider">Search Results for "{submittedQuery}"</h3>
+                      <button 
+                        onClick={() => { setSearchQuery(''); setSubmittedQuery(''); }} 
+                        className="text-[10px] font-black text-red-600 hover:text-white hover:bg-red-500 bg-red-100 px-5 py-2.5 rounded-2xl transition-all uppercase tracking-widest cursor-pointer shadow-sm hover:shadow-md"
+                      >
+                        Close
+                      </button>
+                    </div>
+                    {locations
+                      .filter(loc =>
+                        (loc.staff?.name || loc.name || '').toLowerCase().includes(submittedQuery.toLowerCase()) ||
+                        (loc.staff_id || '').toLowerCase().includes(submittedQuery.toLowerCase())
+                      )
+                      .map((loc) => {
+                        const isOnline = (new Date() - new Date(loc.timestamp)) <= 8 * 60 * 60 * 1000;
+                        return (
+                        <div key={loc.staff_id} className={`group bg-white rounded-[2.5rem] p-6 border shadow-[0_4px_25px_-4px_rgba(0,0,0,0.03)] hover:shadow-[0_20px_45px_-12px_rgba(0,0,0,0.08)] transition-all duration-500 hover:-translate-y-2 relative overflow-hidden ${isOnline ? 'border-gray-100' : 'border-red-100/50 opacity-90'}`}>
+                          <div className="relative z-10">
+                            <div className="flex items-start justify-between mb-6">
+                              <div className="flex items-center gap-4">
+                                <div className={`w-14 h-14 rounded-2xl flex items-center justify-center text-2xl font-black border shadow-inner group-hover:scale-110 transition-transform duration-500 ${isOnline ? 'bg-gradient-to-br from-indigo-50 to-indigo-100/50 text-indigo-600 border-indigo-200/50' : 'bg-gradient-to-br from-gray-50 to-gray-100/50 text-gray-500 border-gray-200/50 grayscale-[50%]'}`}>
+                                  {loc.staff?.name?.charAt(0) || loc.name?.charAt(0) || '?'}
+                                </div>
+                                <div>
+                                  <h3 className="font-extrabold text-gray-950 tracking-tight leading-tight group-hover:text-indigo-600 transition-colors uppercase">{loc.staff?.name || loc.name || 'Unknown'}</h3>
+                                  <p className="text-[10px] text-gray-400 font-mono mt-1 font-bold uppercase tracking-tight">{loc.staff_id}</p>
+                                </div>
+                              </div>
+                              <div className="flex flex-col items-end">
+                                <div className={`flex items-center gap-1.5 px-2 py-1 rounded-full text-[10px] font-black uppercase tracking-tighter mb-2 border ${isOnline ? 'bg-green-50 text-green-600 border-green-100/50' : 'bg-red-50 text-red-600 border-red-100/50'}`}>
+                                  <span className={`w-1.5 h-1.5 rounded-full ${isOnline ? 'bg-green-500 animate-pulse' : 'bg-red-500'}`}></span>
+                                  {isOnline ? 'Live' : 'Offline'}
+                                </div>
+                              </div>
+                            </div>
+
+                            <div className="bg-gray-50/50 rounded-3xl p-5 mb-6 border border-gray-100 grid grid-cols-2 gap-4">
+                              <div>
+                                <p className="text-[9px] font-black text-gray-400 uppercase tracking-widest mb-1.5">Latitude</p>
+                                <p className="font-mono text-xs font-bold text-gray-700 bg-white border border-gray-100 rounded-lg p-2 text-center">{loc.latitude?.toFixed(5)}</p>
+                              </div>
+                              <div>
+                                <p className="text-[9px] font-black text-gray-400 uppercase tracking-widest mb-1.5">Longitude</p>
+                                <p className="font-mono text-xs font-bold text-gray-700 bg-white border border-gray-100 rounded-lg p-2 text-center">{loc.longitude?.toFixed(5)}</p>
+                              </div>
+                            </div>
+
+                            <div className="flex items-center justify-between px-2 mb-6">
+                              <div>
+                                  <p className="text-[9px] font-black text-gray-400 uppercase tracking-widest leading-none mb-1">Status</p>
+                                  <p className={`text-xs font-black uppercase ${isOnline ? 'text-indigo-500' : 'text-red-500'}`}>
+                                    {isOnline ? 'Signals Normal' : 'Signal Lost'}
+                                  </p>
+                              </div>
+                              <div className="text-right">
+                                  <p className="text-[9px] font-black text-gray-400 uppercase tracking-widest leading-none mb-1">Last Update</p>
+                                  <p className="text-[10px] font-bold text-gray-600">{new Date(loc.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</p>
+                              </div>
+                            </div>
+
+                            <a 
+                              href={`https://www.google.com/maps?q=${loc.latitude},${loc.longitude}`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="w-full py-4 bg-gray-900 group-hover:bg-indigo-600 text-white text-[11px] font-black rounded-2xl flex items-center justify-center gap-2.5 transition-all duration-300 shadow-lg shadow-gray-200 group-hover:shadow-indigo-200 ring-4 ring-transparent hover:ring-indigo-50"
+                            >
+                              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+                                <circle cx="12" cy="11" r="3" strokeWidth={2.5} />
+                              </svg>
+                              LOCATE LIVE POSITION
+                            </a>
+                          </div>
+                        </div>
+                      );
+                    })}
+                    {locations.filter(loc =>
+                      (loc.staff?.name || loc.name || '').toLowerCase().includes(submittedQuery.toLowerCase()) ||
+                      (loc.staff_id || '').toLowerCase().includes(submittedQuery.toLowerCase())
+                    ).length === 0 && (
+                      <div className="col-span-full py-24 text-center bg-gray-50/50 rounded-[3rem] border-2 border-dashed border-gray-100 flex flex-col items-center">
+                        <div className="w-24 h-24 bg-white rounded-3xl shadow-sm flex items-center justify-center text-gray-300 mb-8 border border-gray-100">
+                          <svg className="w-12 h-12" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                          </svg>
+                        </div>
+                        <h3 className="text-2xl font-extrabold text-gray-900 tracking-tight uppercase">No Results Found</h3>
+                        <p className="text-gray-400 font-medium max-w-sm mx-auto mt-4 leading-relaxed">No staff matching "{submittedQuery}" detected on the live radar.</p>
+                      </div>
+                    )}
+                  </>
                 )}
               </>
             )}
