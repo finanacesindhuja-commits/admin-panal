@@ -492,28 +492,27 @@ app.get('/tracking-stats', verifyToken, async (req, res) => {
       supabase.from('loans').select('*', { count: 'exact', head: true }).eq('status', 'SANCTIONED').eq('disbursement_app_status', 'READY'),
       
       // 6. HR Attendance (Today's Checked-in Staff)
-      supabase.from('staff_attendance').select('staff_id').eq('date', today),
+      supabase.from('staff_attendance').select('*', { count: 'exact', head: true }).eq('date', today),
       
-      // 7. Total Staff count (to calculate missing attendance)
-      supabase.from('staff').select('staff_id').neq('role', 'Admin'),
+      // 7. Total Staff count
+      supabase.from('staff').select('*', { count: 'exact', head: true }).neq('role', 'Admin'),
 
       // 8. Collection Control (Pending Dues)
-      supabase.from('collection_schedules').select('id').lte('scheduled_date', today).neq('status', 'Paid')
+      supabase.from('collection_schedules').select('*', { count: 'exact', head: true }).lte('scheduled_date', today).neq('status', 'Paid')
     ]);
 
-    // Calculate Missing Attendance
-    const checkedInStaff = new Set(attendanceData?.map(a => a.staff_id) || []);
-    const missingAttendanceCount = (staffData || []).filter(s => !checkedInStaff.has(s.staff_id)).length;
+    // Simple count subtraction for attendance (estimation)
+    const missingAttendanceCount = Math.max(0, (staffData.count || 0) - (attendanceData.count || 0));
 
     res.json({
       hrDashboard: hrCount || 0,
       hrAttendance: missingAttendanceCount || 0,
-      loanApplication: verifierCount || 0, // Loan App submits to PENDING
-      loanVerifier: verifierCount || 0,    // Verifier processes PENDING
+      loanApplication: verifierCount || 0, 
+      loanVerifier: verifierCount || 0,    
       pdVerification: pdCount || 0,
       managerControl: managerCount || 0,
       disbursement: disbursementCount || 0,
-      collectionControl: collectionData?.length || 0
+      collectionControl: collectionData.count || 0
     });
   } catch (err) {
     console.error('Tracking Stats Error:', err.message);

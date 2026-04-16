@@ -46,7 +46,7 @@ export default function AdminSidebar() {
     },
     {
       name: 'HR Attendance',
-      path: '#', // Placeholder or link if exists
+      url: 'https://hr-attendance-sindhuja.vercel.app',
       icon: (
         <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
@@ -56,7 +56,7 @@ export default function AdminSidebar() {
     },
     {
       name: 'Loan Application',
-      path: '#',
+      url: 'https://loan-aplication-sindhuja.vercel.app',
       icon: (
         <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 13h6m-3-3v6m5 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
@@ -66,7 +66,7 @@ export default function AdminSidebar() {
     },
     {
       name: 'Loan Verifier',
-      path: '/admin/verification-history',
+      url: 'https://verifier-sindhuja.vercel.app',
       icon: (
         <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
@@ -75,18 +75,8 @@ export default function AdminSidebar() {
       badge: stats.loanVerifier
     },
     {
-      name: 'PD Verification',
-      path: '#',
-      icon: (
-        <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
-        </svg>
-      ),
-      badge: stats.pdVerification
-    },
-    {
       name: 'Manager Control',
-      path: '#',
+      url: 'https://manager-control-sindhuja.vercel.app',
       icon: (
         <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
@@ -96,7 +86,7 @@ export default function AdminSidebar() {
     },
     {
       name: 'Disbursement',
-      path: '#',
+      url: 'https://disbursed-app-sindhuja.vercel.app',
       icon: (
         <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z" />
@@ -106,7 +96,7 @@ export default function AdminSidebar() {
     },
     {
       name: 'Collection Control',
-      path: '#',
+      url: 'https://collection-control-sindhuja.vercel.app',
       icon: (
         <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
@@ -150,12 +140,15 @@ export default function AdminSidebar() {
         {menuItems.map((item) => (
           <button
             key={item.name}
-            onClick={() => item.path !== '#' && navigate(item.path)}
+            onClick={() => {
+              if (item.url) window.open(item.url, '_blank');
+              else if (item.path !== '#') navigate(item.path);
+            }}
             className={`w-full flex items-center justify-between px-4 py-3 rounded-xl font-bold text-sm transition-all duration-200 ${
               location.pathname === item.path
                 ? 'bg-indigo-50 text-indigo-600 shadow-sm border border-indigo-100/50'
                 : 'text-gray-400 hover:bg-gray-50 hover:text-gray-600'
-            } ${item.path === '#' ? 'opacity-60 cursor-not-allowed' : ''}`}
+            } ${(!item.path || item.path === '#') && !item.url ? 'opacity-60 cursor-not-allowed' : ''}`}
           >
             <div className="flex items-center gap-3">
               <span className={location.pathname === item.path ? 'text-indigo-600' : 'text-gray-300'}>
