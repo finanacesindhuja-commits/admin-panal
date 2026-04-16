@@ -4,6 +4,7 @@ import Login from './pages/Login';
 import Applicants from './pages/Applicants';
 import LiveMap from './pages/LiveMap';
 import VerificationHistory from './pages/VerificationHistory';
+import MasterTracking from './pages/MasterTracking';
 import './index.css';
 
 // Global Axios Interceptors for Authentication
@@ -33,6 +34,7 @@ function App() {
       <Routes>
         <Route path="/" element={<Navigate to="/login" replace />} />
         <Route path="/login" element={<Login />} />
+        <Route path="/tracking" element={<MasterTracking />} />
         <Route path="/applicants" element={<Applicants />} />
         <Route path="/admin/locations" element={<LiveMap />} />
         <Route path="/admin/verification-history" element={<VerificationHistory />} />

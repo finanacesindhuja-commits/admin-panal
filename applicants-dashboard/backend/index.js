@@ -18,6 +18,7 @@ app.set('trust proxy', 1);
 // ✅ Allowed Origins for CORS
 const allowedOrigins = [
   'http://localhost:5173',
+  'http://localhost:5174',
   'http://localhost:4173',
   'https://admin-panal-k6n4.vercel.app',
   process.env.CLIENT_URL,
@@ -41,19 +42,30 @@ const limiter = rateLimit({
 });
 
 // Middleware
-app.use(helmet());
-app.use(morgan(process.env.NODE_ENV === 'production' ? 'combined' : 'dev'));
-app.use(cors({
-  origin: (origin, callback) => {
-    // Allow requests with no origin (like mobile apps, Postman) or from allowed origins
-    if (!origin || allowedOrigins.includes(origin)) {
-      callback(null, true);
-    } else {
-      callback(new Error(`CORS policy: Origin '${origin}' is not allowed.`));
-    }
-  },
-  credentials: true,
+// ✅ Nuclear CORS Fix: Manual Header Management (Highest Priority)
+app.use((req, res, next) => {
+  const origin = req.headers.origin;
+  // Allow if origin is localhost or specifically in our allowed list
+  if (!origin || origin.startsWith('http://localhost:') || allowedOrigins.includes(origin)) {
+    res.header("Access-Control-Allow-Origin", origin || "*");
+  }
+  
+  res.header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
+  res.header("Access-Control-Allow-Headers", "Origin, X-Requested-With, Content-Type, Accept, Authorization");
+  res.header("Access-Control-Allow-Credentials", "true");
+  
+  // Handle Preflight
+  if (req.method === "OPTIONS") {
+    return res.status(200).end();
+  }
+  next();
+});
+
+app.use(helmet({
+  crossOriginResourcePolicy: false,
+  crossOriginEmbedderPolicy: false
 }));
+app.use(morgan(process.env.NODE_ENV === 'production' ? 'combined' : 'dev'));
 app.use(express.json());
 app.use('/api', limiter);
 
@@ -139,7 +151,14 @@ transporter.verify((error, success) => {
 
 // Health check route
 app.get('/test', (req, res) => {
-  res.json({ message: 'Backend is working!', time: new Date().toISOString() });
+  res.json({ 
+    message: 'Backend is working!', 
+    time: new Date().toISOString(),
+    cors_info: {
+      allowed_origins: allowedOrigins,
+      manual_cors_active: true
+    }
+  });
 });
 
 // Supabase setup
@@ -437,6 +456,67 @@ app.get('/pending-verifications-count', verifyToken, async (req, res) => {
     res.json({ count: count || 0 });
   } catch (err) {
     console.error('Pending Verifications Count Error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// GET /tracking-stats → Unified endpoint for sidebar badges and Master Dashboard
+app.get('/tracking-stats', verifyToken, async (req, res) => {
+  try {
+    const today = new Date().toISOString().split('T')[0];
+
+    // Parallel queries for all modules
+    const [
+      { count: hrCount },
+      { count: verifierCount },
+      { count: pdCount },
+      { count: managerCount },
+      { count: disbursementCount },
+      { data: attendanceData },
+      { data: staffData },
+      { data: collectionData }
+    ] = await Promise.all([
+      // 1. HR Dashboard (Pending Applicants)
+      supabase.from('applicants').select('*', { count: 'exact', head: true }).eq('status', 'pending'),
+      
+      // 2. Loan Verifier (Pending Verification)
+      supabase.from('loans').select('*', { count: 'exact', head: true }).eq('status', 'PENDING'),
+      
+      // 3. PD Verification (Pre-Disbursement)
+      supabase.from('pd_verifications').select('*', { count: 'exact', head: true }).eq('status', 'Pending PD Verification'),
+      
+      // 4. Manager Control (Sanction Queue)
+      supabase.from('loans').select('*', { count: 'exact', head: true }).eq('status', 'APPROVED'),
+      
+      // 5. Disbursement (Credit Queue)
+      supabase.from('loans').select('*', { count: 'exact', head: true }).eq('status', 'SANCTIONED').eq('disbursement_app_status', 'READY'),
+      
+      // 6. HR Attendance (Today's Checked-in Staff)
+      supabase.from('staff_attendance').select('staff_id').eq('date', today),
+      
+      // 7. Total Staff count (to calculate missing attendance)
+      supabase.from('staff').select('staff_id').neq('role', 'Admin'),
+
+      // 8. Collection Control (Pending Dues)
+      supabase.from('collection_schedules').select('id').lte('scheduled_date', today).neq('status', 'Paid')
+    ]);
+
+    // Calculate Missing Attendance
+    const checkedInStaff = new Set(attendanceData?.map(a => a.staff_id) || []);
+    const missingAttendanceCount = (staffData || []).filter(s => !checkedInStaff.has(s.staff_id)).length;
+
+    res.json({
+      hrDashboard: hrCount || 0,
+      hrAttendance: missingAttendanceCount || 0,
+      loanApplication: verifierCount || 0, // Loan App submits to PENDING
+      loanVerifier: verifierCount || 0,    // Verifier processes PENDING
+      pdVerification: pdCount || 0,
+      managerControl: managerCount || 0,
+      disbursement: disbursementCount || 0,
+      collectionControl: collectionData?.length || 0
+    });
+  } catch (err) {
+    console.error('Tracking Stats Error:', err.message);
     res.status(500).json({ error: err.message });
   }
 });
