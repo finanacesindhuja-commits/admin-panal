@@ -465,57 +465,276 @@ app.get('/tracking-stats', verifyToken, async (req, res) => {
   try {
     const today = new Date().toISOString().split('T')[0];
 
-    // Parallel queries for all modules
-    const [
-      { count: hrCount },
-      { count: verifierCount },
-      { count: pdCount },
-      { count: managerCount },
-      { count: disbursementCount },
-      { data: attendanceData },
-      { data: staffData },
-      { data: collectionData }
-    ] = await Promise.all([
-      // 1. HR Dashboard (Pending Applicants)
+    const results = await Promise.all([
       supabase.from('applicants').select('*', { count: 'exact', head: true }).eq('status', 'pending'),
-      
-      // 2. Loan Verifier (Pending Verification)
       supabase.from('loans').select('*', { count: 'exact', head: true }).eq('status', 'PENDING'),
-      
-      // 3. PD Verification (Pre-Disbursement)
       supabase.from('pd_verifications').select('*', { count: 'exact', head: true }).eq('status', 'Pending PD Verification'),
-      
-      // 4. Manager Control (Sanction Queue)
       supabase.from('loans').select('*', { count: 'exact', head: true }).eq('status', 'APPROVED'),
-      
-      // 5. Disbursement (Credit Queue)
       supabase.from('loans').select('*', { count: 'exact', head: true }).eq('status', 'SANCTIONED').eq('disbursement_app_status', 'READY'),
-      
-      // 6. HR Attendance (Today's Checked-in Staff)
       supabase.from('staff_attendance').select('*', { count: 'exact', head: true }).eq('date', today),
-      
-      // 7. Total Staff count
       supabase.from('staff').select('*', { count: 'exact', head: true }).neq('role', 'Admin'),
-
-      // 8. Collection Control (Pending Dues)
-      supabase.from('collection_schedules').select('*', { count: 'exact', head: true }).lte('scheduled_date', today).neq('status', 'Paid')
+      supabase.from('collection_schedules').select('*', { count: 'exact', head: true }).lte('scheduled_date', today).eq('status', 'Approved')
     ]);
 
-    // Simple count subtraction for attendance (estimation)
-    const missingAttendanceCount = Math.max(0, (staffData.count || 0) - (attendanceData.count || 0));
+    const counts = results.map(r => r.count || 0);
+    const [
+      hrCount,
+      verifierCount,
+      pdCount,
+      managerCount,
+      disbursementCount,
+      attendanceCount,
+      totalStaffCount,
+      collectionCount
+    ] = counts;
+
+    const missingAttendanceCount = Math.max(0, totalStaffCount - attendanceCount);
 
     res.json({
-      hrDashboard: hrCount || 0,
-      hrAttendance: missingAttendanceCount || 0,
-      loanApplication: verifierCount || 0, 
-      loanVerifier: verifierCount || 0,    
-      pdVerification: pdCount || 0,
-      managerControl: managerCount || 0,
-      disbursement: disbursementCount || 0,
-      collectionControl: collectionData.count || 0
+      hrDashboard: hrCount,
+      hrAttendance: missingAttendanceCount,
+      loanApplication: verifierCount, 
+      loanVerifier: verifierCount,    
+      pdVerification: pdCount,
+      managerControl: managerCount,
+      disbursement: disbursementCount,
+      collectionControl: collectionCount
     });
   } catch (err) {
     console.error('Tracking Stats Error:', err.message);
+    res.status(500).json({ error: 'Failed to fetch tracking stats' });
+  }
+});
+
+// GET /attendance/today → Fetch detailed attendance for today
+app.get('/attendance/today', verifyToken, async (req, res) => {
+  try {
+    const today = new Date().toISOString().split('T')[0];
+    
+    // 1. Fetch all staff (excluding admins)
+    const { data: staff, error: staffError } = await supabase
+      .from('staff')
+      .select('staff_id, name, role')
+      .neq('role', 'Admin');
+
+    if (staffError) throw staffError;
+
+    // 2. Fetch today's attendance
+    const { data: attendance, error: attendanceError } = await supabase
+      .from('staff_attendance')
+      .select('*')
+      .eq('date', today);
+
+    if (attendanceError) throw attendanceError;
+
+    // 3. Merge data
+    const attendanceMap = new Map(attendance.map(a => [a.staff_id, a]));
+    const detailedAttendance = staff.map(s => {
+      const log = attendanceMap.get(s.staff_id);
+      return {
+        staff_id: s.staff_id,
+        name: s.name,
+        role: s.role,
+        status: log ? 'PRESENT' : 'ABSENT',
+        check_in: log?.check_in || log?.check_in_time || null,
+        check_out: log?.check_out || log?.check_out_time || null,
+        location: log?.location || null
+      };
+    });
+
+    res.json(detailedAttendance);
+  } catch (err) {
+    console.error('Attendance API Error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// GET /all-activity → Unified feed of everything happening in the system
+app.get('/all-activity', verifyToken, async (req, res) => {
+  try {
+    const today = new Date().toISOString().split('T')[0];
+    
+    // Parallel queries with individual error handling
+    const [applicantsRes, loansRes, pdRes, attendanceRes] = await Promise.all([
+      supabase.from('applicants').select('name, role, status, created_at').order('created_at', { ascending: false }).limit(10),
+      supabase.from('loans').select('person_name, member_name, status, verified_at, center_name').order('verified_at', { ascending: false }).limit(10),
+      supabase.from('pd_verifications').select('member_id, status, created_at').order('created_at', { ascending: false }).limit(10),
+      supabase.from('staff_attendance').select('*')
+        .gte('date', `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}-01`)
+        .order('date', { ascending: false }).limit(10)
+    ]);
+
+    const events = [];
+
+    if (!applicantsRes.error && applicantsRes.data) {
+      applicantsRes.data.forEach(a => events.push({
+        type: 'APPLICANT',
+        title: `New Applicant: ${a.name}`,
+        subtitle: `Role: ${a.role} | Status: ${a.status}`,
+        timestamp: a.created_at,
+        color: 'blue'
+      }));
+    }
+
+    if (!loansRes.error && loansRes.data) {
+      loansRes.data.forEach(l => events.push({
+        type: 'LOAN',
+        title: `Loan: ${l.person_name || l.member_name}`,
+        subtitle: `Center: ${l.center_name} | Status: ${l.status}`,
+        timestamp: l.verified_at || new Date().toISOString(),
+        color: 'indigo'
+      }));
+    }
+
+    if (!pdRes.error && pdRes.data) {
+      pdRes.data.forEach(pd => events.push({
+        type: 'PD',
+        title: `PD Verification Created`,
+        subtitle: `Member ID: ${pd.member_id} | Status: ${pd.status}`,
+        timestamp: pd.created_at,
+        color: 'rose'
+      }));
+    }
+
+    if (!attendanceRes.error && attendanceRes.data) {
+      attendanceRes.data.forEach(att => events.push({
+        type: 'ATTENDANCE',
+        title: `Attendance Checked In`,
+        subtitle: `Staff ID: ${att.staff_id} | Date: ${att.date}`,
+        timestamp: att.check_in || `${att.date}T00:00:00`,
+        color: 'green'
+      }));
+    }
+
+    events.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+    res.json(events.slice(0, 30));
+  } catch (err) {
+    console.error('All Activity Error:', err.message);
+    res.status(500).json({ error: 'Failed to fetch activity' });
+  }
+});
+
+// GET /loans/all → Detailed loan records for internal tracking
+app.get('/loans/all', verifyToken, async (req, res) => {
+  try {
+    const { data: loans, error } = await supabase
+      .from('loans')
+      .select('*')
+      .order('created_at', { ascending: false });
+    if (error) throw error;
+
+    const { data: staffData } = await supabase.from('staff').select('staff_id, name, branch');
+    const staffMap = {};
+    if (staffData) {
+      staffData.forEach(s => staffMap[s.staff_id] = s);
+    }
+
+    const enrichedLoans = loans.map(loan => {
+       const staffInfo = staffMap[loan.staff_id];
+       const verifierInfo = loan.verifier_id ? staffMap[loan.verifier_id] : null;
+       const disburserInfo = loan.disbursed_by ? staffMap[loan.disbursed_by] : null;
+
+       return {
+          ...loan,
+          display_staff_id: loan.staff_id,
+          display_staff_name: staffInfo ? staffInfo.name : null,
+          display_staff_branch: staffInfo ? staffInfo.branch : null,
+          verifier_name: verifierInfo ? verifierInfo.name : null,
+          verifier_branch: verifierInfo ? verifierInfo.branch : null,
+          disbursed_by_name: disburserInfo ? disburserInfo.name : null
+       };
+    });
+
+    res.json(enrichedLoans);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// GET /pd-verifications/all → Detailed PD records
+app.get('/pd-verifications/all', verifyToken, async (req, res) => {
+  try {
+    const { data: pdData, error: pdError } = await supabase
+      .from('pd_verifications')
+      .select('*')
+      .order('created_at', { ascending: false });
+    if (pdError) throw pdError;
+
+    const { data: loansData, error: loansError } = await supabase
+      .from('loans')
+      .select('member_id, center_name, member_name, person_name, staff_id, verifier_id');
+    if (loansError) throw loansError;
+
+    const loanMap = {};
+    loansData.forEach(l => {
+      loanMap[l.member_id] = l;
+    });
+
+    const { data: staffData } = await supabase.from('staff').select('staff_id, name, branch');
+    const staffMap = {};
+    if (staffData) {
+      staffData.forEach(s => staffMap[s.staff_id] = s);
+    }
+
+    const enrichedData = pdData.map(pd => {
+      const loanInfo = loanMap[pd.member_id] || {};
+      
+      const originalRoInfo = loanInfo.staff_id ? staffMap[loanInfo.staff_id] : null;
+      const verifierInfo = staffMap[pd.staff_id]; // pd.staff_id is the Verifier who submitted the PD
+
+      return {
+        ...pd,
+        center_name: loanInfo.center_name || 'Unknown Center',
+        member_name: loanInfo.member_name || loanInfo.person_name || `Member ID: ${pd.member_id}`,
+        // Original RO who brought the loan
+        original_staff_id: loanInfo.staff_id,
+        display_staff_name: originalRoInfo ? originalRoInfo.name : null,
+        display_staff_branch: originalRoInfo ? originalRoInfo.branch : null,
+        // The Verifier who did the PD
+        verifier_id: pd.staff_id,
+        verifier_name: verifierInfo ? verifierInfo.name : null,
+        verifier_branch: verifierInfo ? verifierInfo.branch : null
+      };
+    });
+
+    res.json(enrichedData);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// GET /collections/all → Detailed collection records
+app.get('/collections/all', verifyToken, async (req, res) => {
+  try {
+    const { data: collections, error } = await supabase
+      .from('collection_schedules')
+      .select('*')
+      .order('scheduled_date', { ascending: false });
+    if (error) throw error;
+
+    const loanIds = [...new Set(collections.map(c => c.loan_id).filter(Boolean))];
+    let loanMap = {};
+    if (loanIds.length > 0) {
+      const { data: loansData } = await supabase.from('loans').select('id, staff_id').in('id', loanIds);
+      if (loansData) loansData.forEach(l => loanMap[l.id] = l.staff_id);
+    }
+
+    const { data: staffData } = await supabase.from('staff').select('staff_id, name, branch');
+    const staffMap = {};
+    if (staffData) staffData.forEach(s => staffMap[s.staff_id] = s);
+
+    const enrichedCollections = collections.map(c => {
+      const roId = loanMap[c.loan_id];
+      const staffInfo = roId ? staffMap[roId] : null;
+      return {
+        ...c,
+        assigned_agent_id: roId,
+        assigned_agent_name: staffInfo ? staffInfo.name : null,
+      };
+    });
+
+    res.json(enrichedCollections);
+  } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });

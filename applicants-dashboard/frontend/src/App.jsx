@@ -5,6 +5,10 @@ import Applicants from './pages/Applicants';
 import LiveMap from './pages/LiveMap';
 import VerificationHistory from './pages/VerificationHistory';
 import MasterTracking from './pages/MasterTracking';
+import Attendance from './pages/Attendance';
+import LoansTracker from './pages/LoansTracker';
+import PDTracker from './pages/PDTracker';
+import CollectionsTracker from './pages/CollectionsTracker';
 import './index.css';
 
 // Global Axios Interceptors for Authentication
@@ -38,6 +42,10 @@ function App() {
         <Route path="/applicants" element={<Applicants />} />
         <Route path="/admin/locations" element={<LiveMap />} />
         <Route path="/admin/verification-history" element={<VerificationHistory />} />
+        <Route path="/admin/attendance" element={<Attendance />} />
+        <Route path="/admin/loans" element={<LoansTracker />} />
+        <Route path="/admin/pd-verifications" element={<PDTracker />} />
+        <Route path="/admin/collections" element={<CollectionsTracker />} />
       </Routes>
     </Router>
   );
