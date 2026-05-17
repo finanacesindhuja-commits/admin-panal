@@ -6,6 +6,7 @@ import AdminLayout from '../components/AdminLayout';
 const API_URL = import.meta.env.VITE_API_URL || (import.meta.env.PROD ? '' : 'http://localhost:5050');
 
 export default function Attendance() {
+  const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
   const [attendance, setAttendance] = useState([]);
   const [loading, setLoading] = useState(true);
   const [stats, setStats] = useState({ present: 0, absent: 0 });
@@ -15,11 +16,12 @@ export default function Attendance() {
     const token = localStorage.getItem('token');
     if (!token) navigate('/login');
     else fetchAttendance();
-  }, [navigate]);
+  }, [navigate, selectedDate]);
 
   const fetchAttendance = async () => {
     try {
-      const response = await axios.get(`${API_URL}/attendance/today`);
+      setLoading(true);
+      const response = await axios.get(`${API_URL}/attendance/today?date=${selectedDate}`);
       setAttendance(response.data);
       
       const present = response.data.filter(a => a.status === 'PRESENT').length;
@@ -56,14 +58,26 @@ export default function Attendance() {
             <h1 className="text-3xl font-extrabold text-gray-950 tracking-tight">HR Attendance</h1>
             <p className="text-gray-500 mt-2 font-medium">Monitor daily staff check-ins and performance.</p>
           </div>
-          <div className="flex gap-4">
-            <div className="bg-green-50 border border-green-100 px-6 py-3 rounded-2xl">
-              <p className="text-[10px] text-green-600 font-black uppercase tracking-widest">Present Today</p>
-              <p className="text-2xl font-black text-green-700">{stats.present}</p>
+          <div className="flex items-center gap-6">
+            <div className="flex flex-col gap-1">
+              <label className="text-[10px] text-gray-400 font-black uppercase tracking-widest ml-1">Select Attendance Date</label>
+              <input 
+                type="date" 
+                value={selectedDate}
+                onChange={(e) => setSelectedDate(e.target.value)}
+                max={new Date().toISOString().split('T')[0]}
+                className="bg-white px-4 py-2.5 rounded-2xl border border-gray-200 text-indigo-950 font-bold text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition cursor-pointer"
+              />
             </div>
-            <div className="bg-red-50 border border-red-100 px-6 py-3 rounded-2xl">
-              <p className="text-[10px] text-red-600 font-black uppercase tracking-widest">Absent Today</p>
-              <p className="text-2xl font-black text-red-700">{stats.absent}</p>
+            <div className="flex gap-4">
+              <div className="bg-green-50 border border-green-100 px-6 py-3 rounded-2xl">
+                <p className="text-[10px] text-green-600 font-black uppercase tracking-widest">Present</p>
+                <p className="text-2xl font-black text-green-700">{stats.present}</p>
+              </div>
+              <div className="bg-red-50 border border-red-100 px-6 py-3 rounded-2xl">
+                <p className="text-[10px] text-red-600 font-black uppercase tracking-widest">Absent</p>
+                <p className="text-2xl font-black text-red-700">{stats.absent}</p>
+              </div>
             </div>
           </div>
         </header>
@@ -76,7 +90,6 @@ export default function Attendance() {
                 <th className="px-8 py-5 text-xs font-bold text-gray-500 uppercase tracking-wider text-center">Status</th>
                 <th className="px-8 py-5 text-xs font-bold text-gray-500 uppercase tracking-wider text-center">Check-In</th>
                 <th className="px-8 py-5 text-xs font-bold text-gray-500 uppercase tracking-wider text-center">Check-Out</th>
-                <th className="px-8 py-5 text-xs font-bold text-gray-500 uppercase tracking-wider">Action</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-50">
@@ -107,15 +120,6 @@ export default function Attendance() {
                   </td>
                   <td className="px-8 py-5 text-center font-mono text-sm font-bold text-gray-600">
                     {formatTime(staff.check_out)}
-                  </td>
-                  <td className="px-8 py-5">
-                    <button className="text-xs font-bold text-indigo-600 hover:text-indigo-800 flex items-center gap-1 transition-colors">
-                      <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
-                      </svg>
-                      View Logs
-                    </button>
                   </td>
                 </tr>
               ))}

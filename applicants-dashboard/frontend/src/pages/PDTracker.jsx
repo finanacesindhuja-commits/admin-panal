@@ -88,7 +88,30 @@ export default function PDTracker() {
                           </div>
                           <div>
                             <div className="font-extrabold text-indigo-950 text-sm uppercase tracking-wider">{centerName}</div>
-                            <div className="text-[10px] text-indigo-500 font-bold uppercase tracking-widest mt-0.5">{items.length} Verifications Pending</div>
+                            <div className="flex items-center gap-2 mt-0.5">
+                              <div className="text-[10px] font-bold uppercase tracking-widest">
+                                {(() => {
+                                  const pending = items.filter(i => i.status?.toLowerCase().includes('pending')).length;
+                                  const completed = items.length - pending;
+                                  return (
+                                    <>
+                                      {pending > 0 && <span className="text-orange-600">{pending} Pending</span>}
+                                      {pending > 0 && completed > 0 && <span className="mx-1 text-gray-300">|</span>}
+                                      {completed > 0 && <span className="text-green-600">{completed} Completed</span>}
+                                      {pending === 0 && completed === 0 && <span className="text-gray-400">0 Verifications</span>}
+                                    </>
+                                  );
+                                })()}
+                              </div>
+                              {items[0]?.display_staff_branch && (
+                                <>
+                                  <span className="text-indigo-300 text-[10px] font-bold">•</span>
+                                  <span className="px-1.5 py-0.5 rounded bg-indigo-50 border border-indigo-100 text-indigo-600 font-bold uppercase tracking-wider text-[8px]">
+                                    {items[0].display_staff_branch} Branch
+                                  </span>
+                                </>
+                              )}
+                            </div>
                           </div>
                         </div>
                         <div className={`text-indigo-400 transition-transform duration-300 ${isExpanded ? 'rotate-180' : ''}`}>

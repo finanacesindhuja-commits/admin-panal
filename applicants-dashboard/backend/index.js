@@ -425,17 +425,35 @@ app.get('/verification-history', verifyToken, async (req, res) => {
   try {
     const { data: loans, error } = await supabase
       .from('loans')
-      .select('id, person_name, member_name, center_name, status, verifier_id, verified_at, verification_remarks')
+      .select('id, person_name, member_name, center_name, status, staff_id, verifier_id, verified_at, verification_remarks, disbursed_by')
       .neq('status', 'PENDING')
       .order('verified_at', { ascending: false });
 
     if (error) throw error;
     
-    // Process names (person_name or member_name)
-    const processedLoans = loans.map(loan => ({
-      ...loan,
-      applicant_name: loan.person_name || loan.member_name
-    }));
+    // Fetch staff data to resolve verifier, staff, and disburser names
+    const { data: staffData } = await supabase.from('staff').select('staff_id, name, branch');
+    const staffMap = {};
+    if (staffData) {
+      staffData.forEach(s => staffMap[s.staff_id] = s);
+    }
+
+    // Process names (person_name or member_name) and enrich with verifier/RO names
+    const processedLoans = loans.map(loan => {
+      const staffInfo = staffMap[loan.staff_id];
+      const verifierInfo = loan.verifier_id ? staffMap[loan.verifier_id] : null;
+      const disburserInfo = loan.disbursed_by ? staffMap[loan.disbursed_by] : null;
+
+      return {
+        ...loan,
+        applicant_name: loan.person_name || loan.member_name,
+        ro_id: loan.staff_id,
+        ro_name: staffInfo ? staffInfo.name : null,
+        display_staff_branch: staffInfo ? staffInfo.branch : null,
+        verifier_name: verifierInfo ? verifierInfo.name : null,
+        disbursed_by_name: disburserInfo ? disburserInfo.name : null
+      };
+    });
 
     res.json(processedLoans);
   } catch (err) {
@@ -470,18 +488,22 @@ app.get('/tracking-stats', verifyToken, async (req, res) => {
       supabase.from('loans').select('*', { count: 'exact', head: true }).eq('status', 'PENDING'),
       supabase.from('pd_verifications').select('*', { count: 'exact', head: true }).eq('status', 'Pending PD Verification'),
       supabase.from('loans').select('*', { count: 'exact', head: true }).eq('status', 'APPROVED'),
+      supabase.from('loans').select('*', { count: 'exact', head: true }).eq('status', 'SANCTIONED').neq('disbursement_app_status', 'READY'),
       supabase.from('loans').select('*', { count: 'exact', head: true }).eq('status', 'SANCTIONED').eq('disbursement_app_status', 'READY'),
       supabase.from('staff_attendance').select('*', { count: 'exact', head: true }).eq('date', today),
       supabase.from('staff').select('*', { count: 'exact', head: true }).neq('role', 'Admin'),
-      supabase.from('collection_schedules').select('*', { count: 'exact', head: true }).lte('scheduled_date', today).eq('status', 'Approved')
+      supabase.from('collection_schedules').select('*', { count: 'exact', head: true }).lte('scheduled_date', today).eq('status', 'Approved'),
+      supabase.from('loans').select('amount_sanctioned, credited_at, created_at').eq('status', 'DISBURSED'),
+      supabase.from('collection_schedules').select('collected_amount, scheduled_date').in('status', ['Paid', 'Received'])
     ]);
 
-    const counts = results.map(r => r.count || 0);
+    const counts = results.slice(0, 9).map(r => r.count || 0);
     const [
       hrCount,
       verifierCount,
       pdCount,
       managerCount,
+      scheduleCount,
       disbursementCount,
       attendanceCount,
       totalStaffCount,
@@ -490,6 +512,171 @@ app.get('/tracking-stats', verifyToken, async (req, res) => {
 
     const missingAttendanceCount = Math.max(0, totalStaffCount - attendanceCount);
 
+    const disbursedLoans = results[9].data || [];
+    const collectionSchedules = results[10].data || [];
+
+    const now = new Date();
+    const currentYear = now.getFullYear();
+    const currentMonth = now.getMonth(); // 0-indexed
+
+    let liveMonthTurnover = 0;
+    let lastMonthTurnover = 0;
+
+    // Monthly trend data for the chart (last 6 months)
+    const monthlyTrend = {};
+    for (let i = 5; i >= 0; i--) {
+      const d = new Date();
+      d.setMonth(now.getMonth() - i);
+      const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+      monthlyTrend[key] = { monthName: d.toLocaleString('default', { month: 'short' }), amount: 0 };
+    }
+
+    disbursedLoans.forEach(loan => {
+      const dateStr = loan.credited_at || loan.created_at;
+      if (!dateStr) return;
+      const d = new Date(dateStr);
+      const amt = Number(loan.amount_sanctioned) || 0;
+
+      // Match current month
+      if (d.getFullYear() === currentYear && d.getMonth() === currentMonth) {
+        liveMonthTurnover += amt;
+      }
+
+      // Match last month
+      const lastMonthDate = new Date();
+      lastMonthDate.setMonth(now.getMonth() - 1);
+      if (d.getFullYear() === lastMonthDate.getFullYear() && d.getMonth() === lastMonthDate.getMonth()) {
+        lastMonthTurnover += amt;
+      }
+
+      // Match 6-month trend chart
+      const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+      if (monthlyTrend[key]) {
+        monthlyTrend[key].amount += amt;
+      }
+    });
+
+    let liveMonthCollection = 0;
+    let lastMonthCollection = 0;
+
+    // Monthly trend data for collection chart (last 6 months)
+    const collectionTrend = {};
+    for (let i = 5; i >= 0; i--) {
+      const d = new Date();
+      d.setMonth(now.getMonth() - i);
+      const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+      collectionTrend[key] = { monthName: d.toLocaleString('default', { month: 'short' }), amount: 0 };
+    }
+
+    collectionSchedules.forEach(sched => {
+      const dateStr = sched.scheduled_date;
+      if (!dateStr) return;
+      
+      const parts = dateStr.split('-');
+      if (parts.length !== 3) return;
+      const year = parseInt(parts[0], 10);
+      const month = parseInt(parts[1], 10) - 1; // 0-indexed month
+      
+      const amt = Number(sched.collected_amount) || 0;
+
+      // Match current month
+      if (year === currentYear && month === currentMonth) {
+        liveMonthCollection += amt;
+      }
+
+      // Match last month
+      const lastMonthDate = new Date();
+      lastMonthDate.setMonth(now.getMonth() - 1);
+      if (year === lastMonthDate.getFullYear() && month === lastMonthDate.getMonth()) {
+        lastMonthCollection += amt;
+      }
+
+      // Match 6-month trend chart
+      const key = `${year}-${String(month + 1).padStart(2, '0')}`;
+      if (collectionTrend[key]) {
+        collectionTrend[key].amount += amt;
+      }
+    });
+
+    // Fetch all staff branches to map staff_id -> branch
+    const { data: staffBranchData } = await supabase.from('staff').select('staff_id, branch');
+    const staffBranchMap = {};
+    let defaultBranch = 'Thiruvarur 01'; // Default fallback
+    if (staffBranchData && staffBranchData.length > 0) {
+      const activeBranch = staffBranchData.find(s => s.branch)?.branch;
+      if (activeBranch) defaultBranch = activeBranch;
+      
+      staffBranchData.forEach(s => staffBranchMap[s.staff_id] = s.branch || defaultBranch);
+    }
+
+    // Map member_id -> staff_id -> branch
+    const { data: loansForMapping } = await supabase.from('loans').select('member_id, staff_id');
+    const memberBranchMap = {};
+    if (loansForMapping) {
+      loansForMapping.forEach(l => {
+        memberBranchMap[l.member_id] = staffBranchMap[l.staff_id] || defaultBranch;
+      });
+    }
+
+    // Calculate Branch-wise Turnover
+    const branchTurnoverStats = {};
+    disbursedLoans.forEach(loan => {
+      const branch = staffBranchMap[loan.staff_id] || defaultBranch;
+      if (!branchTurnoverStats[branch]) {
+        branchTurnoverStats[branch] = { live: 0, last: 0 };
+      }
+      const dateStr = loan.credited_at || loan.created_at;
+      if (!dateStr) return;
+      const d = new Date(dateStr);
+      const amt = Number(loan.amount_sanctioned) || 0;
+      
+      if (d.getFullYear() === currentYear && d.getMonth() === currentMonth) {
+        branchTurnoverStats[branch].live += amt;
+      }
+      
+      const lastMonthDate = new Date();
+      lastMonthDate.setMonth(now.getMonth() - 1);
+      if (d.getFullYear() === lastMonthDate.getFullYear() && d.getMonth() === lastMonthDate.getMonth()) {
+        branchTurnoverStats[branch].last += amt;
+      }
+    });
+
+    const branchTurnoverArray = Object.entries(branchTurnoverStats).map(([branch, values]) => {
+      const growth = values.last > 0 ? ((values.live - values.last) / values.last) * 100 : 0;
+      return { branch, live: values.live, last: values.last, growth };
+    });
+
+    // Calculate Branch-wise Collection
+    const branchCollectionStats = {};
+    collectionSchedules.forEach(sched => {
+      const branch = memberBranchMap[sched.member_id] || defaultBranch;
+      if (!branchCollectionStats[branch]) {
+        branchCollectionStats[branch] = { live: 0, last: 0 };
+      }
+      const dateStr = sched.scheduled_date;
+      if (!dateStr) return;
+      const parts = dateStr.split('-');
+      if (parts.length !== 3) return;
+      const year = parseInt(parts[0], 10);
+      const month = parseInt(parts[1], 10) - 1;
+      const amt = Number(sched.collected_amount) || 0;
+      
+      if (year === currentYear && month === currentMonth) {
+        branchCollectionStats[branch].live += amt;
+      }
+      
+      const lastMonthDate = new Date();
+      lastMonthDate.setMonth(now.getMonth() - 1);
+      if (year === lastMonthDate.getFullYear() && month === lastMonthDate.getMonth()) {
+        branchCollectionStats[branch].last += amt;
+      }
+    });
+
+    const branchCollectionArray = Object.entries(branchCollectionStats).map(([branch, values]) => {
+      const growth = values.last > 0 ? ((values.live - values.last) / values.last) * 100 : 0;
+      return { branch, live: values.live, last: values.last, growth };
+    });
+
     res.json({
       hrDashboard: hrCount,
       hrAttendance: missingAttendanceCount,
@@ -497,8 +684,17 @@ app.get('/tracking-stats', verifyToken, async (req, res) => {
       loanVerifier: verifierCount,    
       pdVerification: pdCount,
       managerControl: managerCount,
+      managerSchedule: scheduleCount,
       disbursement: disbursementCount,
-      collectionControl: collectionCount
+      collectionControl: collectionCount,
+      liveMonthTurnover,
+      lastMonthTurnover,
+      monthlyTrend: Object.values(monthlyTrend),
+      liveMonthCollection,
+      lastMonthCollection,
+      collectionTrend: Object.values(collectionTrend),
+      branchTurnover: branchTurnoverArray,
+      branchCollection: branchCollectionArray
     });
   } catch (err) {
     console.error('Tracking Stats Error:', err.message);
@@ -509,7 +705,7 @@ app.get('/tracking-stats', verifyToken, async (req, res) => {
 // GET /attendance/today → Fetch detailed attendance for today
 app.get('/attendance/today', verifyToken, async (req, res) => {
   try {
-    const today = new Date().toISOString().split('T')[0];
+    const today = req.query.date || new Date().toISOString().split('T')[0];
     
     // 1. Fetch all staff (excluding admins)
     const { data: staff, error: staffError } = await supabase
@@ -519,7 +715,7 @@ app.get('/attendance/today', verifyToken, async (req, res) => {
 
     if (staffError) throw staffError;
 
-    // 2. Fetch today's attendance
+    // 2. Fetch target date's attendance
     const { data: attendance, error: attendanceError } = await supabase
       .from('staff_attendance')
       .select('*')
@@ -545,6 +741,86 @@ app.get('/attendance/today', verifyToken, async (req, res) => {
     res.json(detailedAttendance);
   } catch (err) {
     console.error('Attendance API Error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// GET /staff/locations → Fetch latest location for all active staff
+app.get('/staff/locations', verifyToken, async (req, res) => {
+  try {
+    const { data: staff, error: staffError } = await supabase
+      .from('staff')
+      .select('staff_id, name, branch');
+    
+    if (staffError) throw staffError;
+
+    // Get all locations sorted by timestamp descending
+    const { data: locations, error: locError } = await supabase
+      .from('staff_locations')
+      .select('*')
+      .order('timestamp', { ascending: false });
+
+    if (locError) throw locError;
+
+    // Get the most recent location for each staff member
+    const latestLocations = [];
+    const seenStaff = new Set();
+    
+    locations.forEach(loc => {
+      if (!seenStaff.has(loc.staff_id)) {
+        seenStaff.add(loc.staff_id);
+        const staffInfo = staff.find(s => s.staff_id === loc.staff_id);
+        latestLocations.push({
+          ...loc,
+          staff: staffInfo,
+          name: staffInfo?.name
+        });
+      }
+    });
+
+    res.json(latestLocations);
+  } catch (err) {
+    console.error('Staff Locations Error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// GET /staff/route-history/:staff_id → Fetch GPS trail for a staff member for a given date
+app.get('/staff/route-history/:staff_id', verifyToken, async (req, res) => {
+  try {
+    const { staff_id } = req.params;
+    const date = req.query.date || new Date().toISOString().split('T')[0];
+
+    // Fetch all location pings for this staff on this date
+    const startOfDay = `${date}T00:00:00.000Z`;
+    const endOfDay   = `${date}T23:59:59.999Z`;
+
+    const { data: locations, error } = await supabase
+      .from('staff_locations')
+      .select('latitude, longitude, timestamp')
+      .eq('staff_id', staff_id)
+      .gte('timestamp', startOfDay)
+      .lte('timestamp', endOfDay)
+      .order('timestamp', { ascending: true });
+
+    if (error) throw error;
+
+    // Fetch staff name
+    const { data: staffData } = await supabase
+      .from('staff')
+      .select('name, branch')
+      .eq('staff_id', staff_id)
+      .single();
+
+    res.json({
+      staff_id,
+      staff_name: staffData?.name || staff_id,
+      branch: staffData?.branch || 'Unknown',
+      date,
+      route: locations || []
+    });
+  } catch (err) {
+    console.error('Route History Error:', err.message);
     res.status(500).json({ error: err.message });
   }
 });
@@ -680,7 +956,9 @@ app.get('/pd-verifications/all', verifyToken, async (req, res) => {
       const loanInfo = loanMap[pd.member_id] || {};
       
       const originalRoInfo = loanInfo.staff_id ? staffMap[loanInfo.staff_id] : null;
-      const verifierInfo = staffMap[pd.staff_id]; // pd.staff_id is the Verifier who submitted the PD
+      // Resolve the actual verifier who approved it (loans.verifier_id) with fallback to pd.staff_id
+      const actualVerifierId = loanInfo.verifier_id || pd.staff_id;
+      const verifierInfo = actualVerifierId ? staffMap[actualVerifierId] : null;
 
       return {
         ...pd,
@@ -691,7 +969,7 @@ app.get('/pd-verifications/all', verifyToken, async (req, res) => {
         display_staff_name: originalRoInfo ? originalRoInfo.name : null,
         display_staff_branch: originalRoInfo ? originalRoInfo.branch : null,
         // The Verifier who did the PD
-        verifier_id: pd.staff_id,
+        verifier_id: actualVerifierId,
         verifier_name: verifierInfo ? verifierInfo.name : null,
         verifier_branch: verifierInfo ? verifierInfo.branch : null
       };

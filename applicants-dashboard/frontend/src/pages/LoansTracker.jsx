@@ -53,6 +53,16 @@ export default function LoansTracker() {
     ? loans
     : loans.filter(loan => loan.status === activeFilter);
 
+  // Dynamic counts for tabs
+  const statusCounts = loans.reduce((acc, loan) => {
+    const s = loan.status;
+    if (acc[s] !== undefined) {
+      acc[s] = acc[s] + 1;
+    }
+    return acc;
+  }, { PENDING: 0, APPROVED: 0, SANCTIONED: 0, DISBURSED: 0, REJECTED: 0 });
+  statusCounts.ALL = loans.length;
+
   const groupedLoans = filteredLoans.reduce((acc, loan) => {
     const center = loan.center_name || 'Unknown Center';
     if (!acc[center]) acc[center] = [];
@@ -78,6 +88,38 @@ export default function LoansTracker() {
               : `Currently viewing ${activeFilter} loans.`}
           </p>
         </header>
+
+        {/* Filters Tab Bar */}
+        <div className="flex flex-wrap gap-2 mb-6 bg-white p-2.5 rounded-2xl border border-gray-100 shadow-sm">
+          {[
+            { id: 'ALL', label: 'All Loans', count: statusCounts.ALL },
+            { id: 'PENDING', label: 'Pending', count: statusCounts.PENDING },
+            { id: 'APPROVED', label: 'Approved', count: statusCounts.APPROVED },
+            { id: 'SANCTIONED', label: 'Sanctioned', count: statusCounts.SANCTIONED },
+            { id: 'DISBURSED', label: 'Disbursed', count: statusCounts.DISBURSED },
+            { id: 'REJECTED', label: 'Rejected', count: statusCounts.REJECTED }
+          ].map(tab => {
+            const isActive = activeFilter === tab.id;
+            return (
+              <button
+                key={tab.id}
+                onClick={() => setActiveFilter(tab.id)}
+                className={`flex items-center gap-2 px-5 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all duration-200 border cursor-pointer ${
+                  isActive 
+                    ? 'bg-indigo-600 border-indigo-600 text-white shadow-md shadow-indigo-600/10 scale-[1.02]' 
+                    : 'bg-white border-gray-100 text-gray-500 hover:text-gray-900 hover:bg-gray-50'
+                }`}
+              >
+                <span>{tab.label}</span>
+                <span className={`px-2 py-0.5 rounded-full text-[9px] font-black ${
+                  isActive ? 'bg-white/20 text-white' : 'bg-gray-100 text-gray-600'
+                }`}>
+                  {tab.count}
+                </span>
+              </button>
+            );
+          })}
+        </div>
 
         <div className="bg-white rounded-3xl shadow-xl shadow-gray-100/50 border border-gray-100 overflow-hidden">
           <table className="w-full text-left border-collapse">
@@ -133,7 +175,14 @@ export default function LoansTracker() {
                         <div className="font-bold text-gray-900">{loan.person_name || loan.member_name}</div>
                         <div className="text-[10px] text-gray-400 font-bold uppercase tracking-widest mt-0.5">ID: {String(loan.id).slice(0, 8)}</div>
                       </td>
-                      <td className="px-8 py-5 font-medium text-gray-600">{loan.center_name}</td>
+                      <td className="px-8 py-5">
+                        <div className="font-semibold text-gray-800">{loan.center_name}</div>
+                        {loan.display_staff_branch && (
+                          <span className="inline-block mt-1 px-2 py-0.5 rounded bg-indigo-50 border border-indigo-100 text-indigo-600 font-bold uppercase tracking-wider text-[8px] shadow-sm">
+                            {loan.display_staff_branch} Branch
+                          </span>
+                        )}
+                      </td>
                       <td className="px-8 py-5 text-center font-black text-gray-900">₹{loan.amount_sanctioned || '0'}</td>
                       <td className="px-8 py-5 text-center">
                         <span className={`px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-tighter border ${getStatusColor(loan.status)}`}>
